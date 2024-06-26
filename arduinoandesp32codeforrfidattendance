@@ -1,0 +1,206 @@
+#Step-1 arduino code
+#include <SPI.h>
+#include <MFRC522.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+#define SS_PIN 5    // SDA pin for MFRC522 on ESP32 (IO5)
+#define RST_PIN 23  // Reset pin for MFRC522 on ESP32 (IO23)
+
+MFRC522 mfrc522(SS_PIN, RST_PIN); // Create MFRC522 instance.
+
+const char* ssid = "Airtel_tejv_3002";      // Your WiFi SSID
+const char* password = "air73137";  // Your WiFi password
+const char* device_token  = "M1D1"; // Device token or identifier
+
+String URL = "http://192.168.1.29:3000/rfidattendance/senddata";
+
+String getData, Link;
+String OldCardID = "";
+unsigned long previousMillis = 0;
+
+void setup() {
+  Serial.begin(115200);
+  SPI.begin();        // Init SPI bus
+  mfrc522.PCD_Init(); // Init MFRC522 card
+  
+  connectToWiFi();    // Connect to WiFi on startup
+}
+
+void loop() {
+  if (!WiFi.isConnected()) {
+    connectToWiFi();  // Reconnect to WiFi if disconnected
+  }
+
+  if (millis() - previousMillis >= 15000) {
+    previousMillis = millis();
+    OldCardID = "";
+  }
+  
+  delay(50);
+
+  if (!mfrc522.PICC_IsNewCardPresent()) {
+    return; // Return to loop start if no card present
+  }
+
+  if (!mfrc522.PICC_ReadCardSerial()) {
+    return; // Return to loop start if card read failed
+  }
+
+  String CardID = "";
+  for (byte i = 0; i < mfrc522.uid.size; i++) {
+    CardID += mfrc522.uid.uidByte[i];
+  }
+
+  if (CardID == OldCardID) {
+    return;
+  } else {
+    OldCardID = CardID;
+  }
+
+  SendCardID(CardID); // Send card ID to server
+  delay(1000);
+}
+
+void SendCardID(String Card_uid) {
+  Serial.println("Sending the Card ID");
+
+  if (WiFi.isConnected()) {
+    HTTPClient http;  // Declare HTTPClient object
+    
+    getData = "?card_uid=" + String(Card_uid) + "&device_token=" + String(device_token); // Prepare GET parameters
+    Link = URL + getData; // Construct full URL
+
+    http.begin(Link); // Initiate HTTP request
+
+    int httpCode = http.GET(); // Send the request
+    String payload = http.getString(); // Get the response payload
+
+    Serial.println(httpCode); // Print HTTP return code
+    Serial.println(Card_uid); // Print Card ID
+    Serial.println(payload);  // Print request response payload
+
+    if (httpCode == 200) {
+      if (payload.substring(0, 5) == "login") {
+        String user_name = payload.substring(5);
+        // Process login response
+      } else if (payload.substring(0, 6) == "logout") {
+        String user_name = payload.substring(6);
+        // Process logout response
+      } else if (payload == "successful") {
+        // Process successful response
+      } else if (payload == "available") {
+        // Process available response
+      }
+      
+      delay(100);
+      http.end();  // Close connection
+    }
+  }
+}
+
+void connectToWiFi() {
+  WiFi.begin(ssid, password); // Connect to WiFi network
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("Connected to WiFi");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP()); // Print local IP address
+}
+
+
+#Step-2 esp32 with rfid micropython code
+from machine import Pin, SPI
+import mfrc522
+import network
+import urequests as requests  # For making HTTP requests
+
+# Define your SPI pins
+sck = Pin(18, Pin.OUT)
+mosi = Pin(23, Pin.OUT)
+miso = Pin(19, Pin.OUT)
+sda = Pin(5, Pin.OUT)
+rst = Pin(23, Pin.OUT)
+
+# Create SPI bus
+spi = SPI(2, baudrate=100000, polarity=0, phase=0, sck=sck, mosi=mosi, miso=miso)
+
+# Create MFRC522 instance
+mfrc = mfrc522.MFRC522(spi, sda, rst)
+
+# WiFi configuration
+ssid = "YourWiFiSSID"
+password = "YourWiFiPassword"
+
+# Server configuration
+URL = "http://192.168.1.29:3000/rfidattendance/senddata"
+device_token = "M1D1"
+
+# Variables for storing previous card ID and last send time
+old_card_id = ""
+previous_millis = 0
+
+# Connect to WiFi function
+def connect_to_wifi():
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    if not wlan.isconnected():
+        print('Connecting to WiFi...')
+        wlan.connect(ssid, password)
+        while not wlan.isconnected():
+            pass
+    print('Connected to WiFi')
+    print('IP address:', wlan.ifconfig()[0])
+
+# Main loop
+def main():
+    global old_card_id, previous_millis
+    while True:
+        if not network.WLAN(network.STA_IF).isconnected():
+            connect_to_wifi()
+
+        # Check if 15 seconds have passed to reset old_card_id
+        if time.ticks_diff(time.ticks_ms(), previous_millis) >= 15000:
+            previous_millis = time.ticks_ms()
+            old_card_id = ""
+
+        # Check for new RFID card
+        (stat, tag_type) = mfrc.request(mfrc.REQIDL)
+        if stat == mfrc.OK:
+            (stat, raw_uid) = mfrc.anticoll()
+            if stat == mfrc.OK:
+                card_id = ''.join([str(i) for i in raw_uid])
+                if card_id != old_card_id:
+                    old_card_id = card_id
+                    send_card_id(card_id)
+                    time.sleep_ms(1000)
+
+# Function to send card ID to server
+def send_card_id(card_uid):
+    print("Sending Card ID:", card_uid)
+    try:
+        response = requests.get(URL, params={'card_uid': card_uid, 'device_token': device_token})
+        if response.status_code == 200:
+            payload = response.text
+            print("Response:", payload)
+            if payload.startswith("login"):
+                user_name = payload[5:]
+                # Process login response
+            elif payload.startswith("logout"):
+                user_name = payload[6:]
+                # Process logout response
+            elif payload == "successful":
+                # Process successful response
+            elif payload == "available":
+                # Process available response
+    except Exception as e:
+        print("Exception:", e)
+
+# Start the main function
+if __name__ == '__main__':
+    main()
