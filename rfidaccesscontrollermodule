@@ -169,7 +169,7 @@ void printBits()
   Serial.println(cardCode); 
 }
 
-#Step-2 without using the wiegand library in esp32 micropython
+#EXAMPLE-3 without using the wiegand library in esp32 micropython
 from machine import UART, Pin
 import time
 
@@ -181,8 +181,23 @@ while True:
         large_number = int.from_bytes(tag, 'big')
         print(large_number)
     time.sleep(0.5)
+#EXAMPLE-4 in thie above code using micropython i am getting too large data so i have conver it into integer data and read only the first 6 digits 
+from machine import UART
+import time
 
-#EXAMPLE-4 this is the rfid access controller module to get the wiegand data and trigger the relay based on the card
+uart = UART(1, baudrate=115200, tx=16, rx=17)
+
+while True:
+    if uart.any():
+        tag = uart.read()
+        large_number = int.from_bytes(tag, 'big')  # Convert bytes to integer
+        card_str = str(large_number)  # Convert integer to string
+        first_six_digits = int(card_str[:6])  # Extract and convert first 6 digits
+        print(first_six_digits)
+    
+    time.sleep(1)  # Delay between readings
+
+#EXAMPLE-5 this is the rfid access controller module to get the wiegand data and trigger the relay based on the card
 
 
 #define MAX_BITS 100                 // max number of bits 
