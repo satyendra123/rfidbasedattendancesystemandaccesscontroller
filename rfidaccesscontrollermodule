@@ -169,5 +169,16 @@ void printBits()
   Serial.println(cardCode); 
 }
 
-#without using the wiegand library in esp32 micropython
+#Step-2 without using the wiegand library in esp32 micropython
+from machine import UART, Pin
+import time
+
+uart = UART(1, baudrate=115200, tx=16, rx=17)
+
+while True:
+    if uart.any():
+        tag = uart.read()
+        large_number = int.from_bytes(tag, 'big')
+        print(large_number)
+    time.sleep(0.5)
 
