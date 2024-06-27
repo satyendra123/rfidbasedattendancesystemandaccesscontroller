@@ -1,5 +1,5 @@
 # i have a module rfid which is used in door access controller. i want to read the data of this reader then how would i do that. so there are two ways to do it. if any reader whether it is UHF rfid, rfid card so in which we have D0 and D1 pin in that means we can integrate it with my esp32 uart pin rx and tx. also we can use the wiegand library
-
+# the same code will be used with the UHF rfid to read the wiegand protocol
 #EXAMPLE-1  using the wiegand library
 
 #include <Wiegand.h>
